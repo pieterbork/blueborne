@@ -1,0 +1,153 @@
+CVE DESCRIPTIONS AT BOTTOM
+
+Pulled code heavily from:
+https://github.com/hook-s3c/blueborne-scanner
+https://github.com/ojasookert/CVE-2017-0785
+
+Vulnerable versions:
+BlueZ vulnerable 5.46
+Linux Kernel 3.3-rc1 - 4.13.1
+iOS until version 10
+
+(page 8)
+MITM Vulns for Windows/Android PAN
+Android RCE in BNEP/PAN
+Info leak Linux/Android in SDP
+Linux RCE in L2CAP (corestack)
+iOS RCE in LEAP (iOS corestack)
+
+Terms: L2CAP, SMP, SDP, BNEP, PAN
+
+L2CAP: Layer responsible for managing connections. Underlying transport is ACL - Asynchronous Connection-Oriented Logical transport (unreliable?). Uses Channel IDs, equivalent to ports on TCP/IP. L2CAP implements fragmentation and reassembly, enables transport of SDUs (Service Data Units or "large packets").
+
+CID 1 - Control packets, new connections. 
+Other CIDs allocated dynamically.
+BT Services have fixed PSMs (Protocol/Service Multiplexer)
+
+(page 10)
+Configuration Process:
+L2CAP_ConfReq and L2Cap_ConfResp
+Agree on MTUs, renogotiate if invalid MTU requested.
+
+Diff config for EFS (Extended Flow Specification) feature. 
+Here is the BlueZ vulnerability - EFS
+
+(page 15)
+SDP (Service Discovery Protocol) - Core layer in bluetooth, part of every stack. Allow devices to discover services. SDP is reponsible to translate UUIDs (Universal Unique Identifiers) of Bluetooth services to PSMs (equiv to port #). SDP client sentds SDP request and appropriate response is returned. 
+
+SDP defines fragmentatiion mechanism for SDP responses returned by SDP server called SDP continuation.
+
+SDP Continuation:
+1. SDP Client sends SDP Request
+2. If response Exceeds MTU of established L2CAP conn, fragment of response returned with "continuation state" prepended to SDP response.
+3. SDP client sends SAME request, appending the "continuation state"
+4. SDP Server returns the next fragment
+5. Flow repeated until all fragments delivered
+
+Why SDP Continuation when fragmentation implemented in L2CAP & ACL?
+
+Continuation information is not standardized, each server may be different.
+
+(page 19)
+SMP (Security Management Protocol) - Enables various security mechanisms such as authentication, authorization, and bonding(pairing).
+
+SSP (Secure Simple Pairing) - do-over of SMP's security mechanisms to remedy many flaws in PIN code exchange present until v2.1. (Diffie-Hellman)
+
+SSP exchange messages between two endpoints to gather IO capabilities
+-What type of interface?
+-What type of auth you need?
+
+IO_Capability:
+0x00 - DisplayOnly
+0x01 - DisplayYesNo
+0x02 - KeyboardOnly
+0x03 - NoInputNoOutput
+0x04 - 0xFF - Reserved for future use
+
+Authentication_Requirements:
+0x00 - No MITMP, No Bonding, Numeric Comparison with automatic accept
+0x01 - MITMP, No Bonding, Use IO Capabilities to determine auth procedure
+0x02 - No MITMP, Dedicated Bonding, Numeric Comparison with automatic accept
+0x03 - MITMP, Decicated Bonding, Use IO Capabilities to determine auth procedure
+0x04 - No MITMP, General Bonding, Numeric comparison with automatic accept
+0x05 - MITMP, General Bonding, Use IO Capabilities to determine auth procedure
+
+(IO_Capability)
+Device A & Device B = ? 
+0x00 & 0x00 = Numeric Comparison, auto confirm, unauthenticated
+0x00 & 0x01 = Numeric Comparison, auto confirm, unauthenticated
+0x00 & 0x02 = Passkey Entry, Initiator Display, Responder Input, Authenticated
+0x01 & 0x00 = Numeric Comparison, auto confirm, unauthenticated
+0x01 & 0x01 = Numeric Comparison, Both Display, Both Confirm
+0x01 & 0x02 = Passkey Entry, Responder Display, Initiator Input, Authenticated
+0x02 & 0x00 = Passkey Entry, Responder Display, Initiator Input, Authenticated
+0x02 & 0x01 = Passkey Entry, Responder Display, Initiator Input, Authenticated
+0x02 & 0x02 = Passkey Entry, Responder Display, Initiator Input, Authenticated
+0x03 & 0x00 = Numeric Comparison, auto confirm, unauthenticated
+0x03 & 0x01 = Numeric Comparison, auto confirm on A, Yes/No conf on B unauthenticated
+0x03 & 0x02 = etc etc
+
+Numeric Comparison, auto confirm, unauthenticated => "Just Works"
+Attacker can force temporary pairing to a victim without any user interaction.
+
+Now that attacker is authed, he can access some of the high-level services like BNEP.
+
+(page 25)
+BNEP (Bluetooth network encapsulation protocol) - used to allow internet tethering over BT.
+
+Above BNEP lays the PAN (Personal Area Network) profile that implements network layer.
+
+BNEP Spec. [L2CAP Header - 4bytes][BNEP Header-atleast1byte][Ethernet Payload-0-1500bytes]
+
+BNEP is just encapsulation of ethernet transmitted over bluetooth
+
+BNEP also supports BNEP control message, facilitates creation of PAN connection.
+Possible to enable multiple control messages in single L2CAP message
+
+
+
+
+
+
+
+
+
+
+Linux kernel RCE (CVE-2017-1000251) (page 12)
+Buffer Overflow sending Malformed L2CAP packets using EFS feature & pending state.
+
+Linux BlueZ Information Leak (CVE-2017-1000250) (page 16)
+Control continuation state variable from SDP, which can be used to perform out of bounds reads. HEARTBLEED. bluetoothd process contains encryptions keys.
+
+Android Information Leak (CVE-2017-0785) (page 18)
+Similar SDP exploitation
+1. Search Request to any service
+2. Response returned with continuation state, with size defined by MTU of conn
+3. Second request to different service, continuation state from previous response prepended to this request. Second search equest will return smaller response size, leads to state confusion.
+4. cont_offset validation attempted, but will pass
+5. num_rsp_handles is smaller, and underflow of rem_handles achieved
+6. now assumes very large response needed, for loop copies bytes from rsp_handles to outgoing response.
+7. Attacker repeats sending same request and prepending returned cont_offset, reading more and more out of bound bytes from rsp_handles like encryption keys.
+
+NOTE: FRAGMENTATION IS DANGEROUS WHEN IMPLEMENTED POORLY
+
+Android RCE #1 (CVE-2017-0781) (page 26)
+BNEP Control Packet causes heap corruption and memory leak.
+Overflow of 8 bytes on the heap following a buffer of any chosen size.
+
+[type][ctrl_type][len][Overflow payload (8 bytes)]
+[81  ][01       ][00 ][41|41|41|41|41|41|41|41   ]
+
+Memcpy overflows the heap with overflow payload bytes
+
+Android RCE #2 (CVE-2017-0782) (page 28)
+Uses an underflow of rem_len to create large payload. Attacker can bypass many MTU restrictions. Heap grooming prior to the overflow can allow remote code execution.
+
+NOTE: Android bluetooth service in Android runs under Zygote and is 32-bit, limiting ASRL entropy. Service also restarted automatically when crashes - providing infinite attack attempts.
+
+Windows/Android Bluetooth Pineapple - Logical Flaw (CVE-2017-0783 & CVE-2017-8628) (page 32)
+Attacker forces device to send DHCP request, supplying device with malicicous DNS/gateway allowing MITM.
+
+Apple LEAP RCE (CVE-2017-14315)
+Unauthenticated receipt of LEAP audio data messages with fixed CID 0x2B results in possible heap overflow (can be triggered multiple times).
+
