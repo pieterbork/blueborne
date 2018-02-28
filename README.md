@@ -7,8 +7,8 @@ This project was a proof of concept for a talk I gave in 2017.
 It simply performs a scan, prints out probably vulnerable hosts based on MACs and then runs the exploit on the target of your selection (if the device is actually vulnerable you will see a hex printout, if you run the exploit against a patched system nothing will return).
 
 ## Usage: 
-  
-  python bluebornescan.py
+
+`python bluebornescan.py`
 
 ## References:
 
