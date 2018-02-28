@@ -1,10 +1,15 @@
-Blueborne CVE-2017-0785
+# Blueborne CVE-2017-0785
 
-Usage: python bluebornescan.py
+## Usage: 
+  
+  python bluebornescan.py
 
-References:
+## References:
+
 https://github.com/hook-s3c/blueborne-scanner
+
 https://github.com/ojasookert/CVE-2017-0785
 
-Used code from these two repos, modded a bit and ported to python3
+
+Pulled code from these two repos, polished it up a bit, and ported to python 3.
 
